@@ -19,14 +19,18 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/csv-parse": "^1.1.12",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.2.3",
+    "form-data": "^4.0.5",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@fastify/multipart": "^9.4.0",
+    "csv-parse": "^6.1.0",
     "fastify": "^5.7.4"
   }
 }
