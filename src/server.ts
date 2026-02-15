@@ -1,6 +1,6 @@
 import fastify, { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
-import { saveFeeConfig } from './controllers/fee.controller';
+import { saveFeeConfig, calculateFeeHandler } from './controllers/fee.controller';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const server = fastify({
@@ -14,6 +14,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   server.post('/fee', saveFeeConfig);
+  server.get('/fee', calculateFeeHandler);
 
   return server;
 }

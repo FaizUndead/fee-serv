@@ -1,11 +1,11 @@
-import { FeeConfig } from '../types/fee.types';
+import { FeeIndex } from '../types/fee.types';
 
-let feeConfig: FeeConfig | undefined;
+let feeIndex: FeeIndex | undefined;
 
-export function setFeeConfig(config: FeeConfig): void {
-  feeConfig = config;
+export function setFeeIndex(index: FeeIndex): void {
+  feeIndex = index;
 }
 
-export function getFeeConfig(): FeeConfig | undefined {
-  return feeConfig;
+export function getFeeIndex(): FeeIndex | undefined {
+  return feeIndex;
 }
