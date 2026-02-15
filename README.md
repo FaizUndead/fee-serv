@@ -120,6 +120,69 @@ transfer,5003,10001,0.0222
 - Invalid number formats
 - Percentage outside range [0, 1]
 
+### GET /fee
+
+Calculate fee for a given transaction amount and type.
+
+**Query Parameters**:
+- `total` (required): Transaction amount (non-negative number)
+- `type` (required): Fee type (string, e.g., "clearing", "transfer")
+
+**Example Request**:
+```
+GET /fee?total=1000&type=clearing
+```
+
+**Success Response**: `200 OK`
+
+```json
+{
+  "total": 1037.9,
+  "type": "clearing",
+  "percentage": 0.0379,
+  "feeAmount": 37.9
+}
+```
+
+**Response Fields**:
+- `total`: Original amount + fee amount
+- `type`: Fee type from the request
+- `percentage`: Matching fee percentage from configuration
+- `feeAmount`: Calculated fee amount (original total × percentage)
+
+**Error Responses**:
+
+`400 Bad Request` - Invalid request parameters
+
+```json
+{
+  "error": "Missing required query parameter: total"
+}
+```
+
+Possible 400 errors:
+- Missing `total` parameter
+- Missing `type` parameter
+- `total` is not a valid number or is negative
+- Fee configuration not loaded (must upload CSV first)
+
+`404 Not Found` - No matching fee rule
+
+```json
+{
+  "error": "No fee rule found for type \"clearing\" and total 20000"
+}
+```
+
+This occurs when:
+- The specified fee type doesn't exist in the configuration
+- The total amount doesn't fall within any configured range for that type
+
+**Algorithm**:
+- Fee lookup uses binary search on indexed ranges (O(log n) complexity)
+- Rules are grouped by fee type and sorted by range start
+- First matching range wins (efficient for non-overlapping ranges)
+
 ## Project Structure
 
 ```

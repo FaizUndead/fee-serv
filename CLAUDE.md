@@ -15,7 +15,7 @@ The entire project was built using Test-Driven Development:
 4. Code refactored while maintaining green tests
 
 This approach ensured:
-- High test coverage (19 tests across 4 test suites)
+- High test coverage (42 tests across 6 test suites)
 - Clear specification of behavior before coding
 - Confidence in refactoring
 
@@ -29,13 +29,20 @@ This approach ensured:
 
 **Services** (`src/services/`)
 - `csv-parser.ts`: Validates and parses CSV content into typed config
-- `config-store.ts`: Simple in-memory storage for fee configuration
+- `config-store.ts`: Simple in-memory storage for indexed fee configuration
+- `fee-lookup.ts`: Stateless service for building index and finding fee rules using binary search
 - Pure business logic with no HTTP concerns
 - Independently testable
+
+**Utilities** (`src/utils/`)
+- `fee-calculator.ts`: Pure function for fee calculation (total × percentage)
 
 **Types** (`src/types/`)
 - `FeeRule`: Single fee rule with feeType, from, to, percentage
 - `FeeConfig`: Array of FeeRule objects
+- `FeeIndex`: Map<feeType, sorted FeeRule[]> for efficient lookups
+- `FeeCalculationRequest`: Request params for GET /fee
+- `FeeCalculationResponse`: Response structure with calculated fee
 - Shared across all layers
 
 ### Technology Choices
@@ -72,26 +79,49 @@ This approach ensured:
   - Range validation (percentage 0-1)
   - Error handling
 ✅ In-memory config store (3 test cases)
-  - Set and get operations
-  - Config overwriting
-✅ File upload endpoint (POST /fee)
+  - Set and get operations for FeeIndex
+  - Index overwriting
+✅ Fee lookup service with binary search (10 test cases)
+  - Build indexed Map grouped by fee type
+  - Binary search on sorted ranges
+  - O(log n) lookup complexity
+✅ Fee calculator utility (6 test cases)
+  - Pure function for percentage-based calculation
+✅ File upload endpoint (POST /fee - 3 test cases)
   - Multipart file handling
   - CSV parsing integration
-  - Config storage integration
-  - Error responses (3 controller test cases)
-✅ Comprehensive test suite (19 total tests)
-✅ Documentation (README.md)
+  - Index building and storage
+  - Error responses
+✅ Fee calculation endpoint (GET /fee - 7 test cases)
+  - Query parameter validation
+  - Fee rule lookup using binary search
+  - Fee calculation and response formatting
+  - Error handling (missing params, no config, no matching rule)
+✅ Comprehensive test suite (42 total tests across 6 test suites)
+✅ Documentation (README.md, .claudemd)
+
+### Architecture Highlights
+
+**Efficient Fee Lookup Algorithm**:
+- CSV upload: Builds `Map<feeType, sorted FeeRule[]>` index (O(n log n))
+- Fee calculation: Binary search within fee type group (O(log n))
+- Space complexity: O(n) for indexed storage
+
+**Clean Architecture**:
+- Stateless services (fee-lookup)
+- Pure functions (fee-calculator)
+- Dumb storage (config-store)
+- Orchestration in controllers
 
 ### Not Yet Implemented
 
-- Fee calculation logic (deliberately deferred per requirements)
-- Config retrieval endpoint (GET /fee)
 - Data persistence (currently in-memory only)
 - Authentication/authorization
 - Rate limiting
-- Request validation schemas
-- Logging improvements
-- Error monitoring
+- Request validation schemas (using Fastify schemas)
+- Structured logging improvements
+- Error monitoring (Sentry, etc.)
+- Horizontal scaling considerations
 
 ## Code Organization Patterns
 
@@ -101,11 +131,13 @@ This approach ensured:
 - `*.types.ts` - Type definition files
 
 ### Test Organization
-- Each service/controller has its own test file
+- Each service/controller/utility has its own test file
 - Tests are colocated with the code they test
-- Server-level tests only cover routing and health endpoint
-- Controller tests verify HTTP integration
-- Service tests verify business logic in isolation
+- Server-level tests (2 tests): routing and health endpoint
+- Controller tests (10 tests): HTTP integration for POST and GET endpoints
+- Service tests (21 tests): CSV parsing, config storage, fee lookup
+- Utility tests (6 tests): fee calculation logic
+- Integration tests use beforeEach to setup shared state (e.g., uploading CSV before testing GET /fee)
 
 ### Import Strategy
 - Relative imports within the same module
@@ -114,33 +146,43 @@ This approach ensured:
 
 ## Memory Considerations
 
-The config store uses a simple module-level variable:
+The config store uses a simple module-level variable for the indexed fee structure:
 ```typescript
-let feeConfig: FeeConfig | undefined;
+let feeIndex: FeeIndex | undefined; // Map<feeType, sorted FeeRule[]>
 ```
 
 **Implications**:
-- Config is lost on server restart
+- Index is lost on server restart (must re-upload CSV)
 - Not suitable for multi-instance deployments without external storage
 - Fast read/write with no I/O overhead
+- O(log n) lookup performance via binary search
 - Good for prototyping and development
 
+**Design Decision**:
+- Only stores the indexed `FeeIndex`, not the raw `FeeConfig`
+- The raw CSV data is transformed immediately into the optimized lookup structure
+- Reduces memory footprint and eliminates redundant storage
+
 **Future Options**:
-- Add Redis for shared in-memory storage
+- Add Redis for shared in-memory storage across instances
 - Add database persistence (PostgreSQL, MongoDB)
 - Add file-based persistence as fallback
+- Consider write-through cache pattern for database-backed storage
 
 ## Testing Strategy
 
-### Unit Tests (Services)
+### Unit Tests (Services & Utilities)
 - csv-parser: 11 tests covering parsing, validation, edge cases
-- config-store: 3 tests covering get/set/overwrite operations
+- config-store: 3 tests covering get/set/overwrite operations for FeeIndex
+- fee-lookup: 10 tests covering index building and binary search logic
+- fee-calculator: 6 tests covering calculation logic with various inputs
 - Isolated from HTTP layer and file I/O
 
 ### Integration Tests (Controllers)
-- fee.controller: 3 tests covering file upload, parsing, and storage integration
+- fee.controller: 10 tests (3 for POST /fee, 7 for GET /fee)
 - Tests actual HTTP requests using Fastify's inject method
 - Verifies end-to-end flow without network calls
+- beforeEach hooks ensure proper test setup (e.g., uploading CSV before testing GET)
 
 ### Server Tests
 - 2 tests for health endpoint
@@ -150,6 +192,7 @@ let feeConfig: FeeConfig | undefined;
 - FormData used for multipart file upload testing
 - Fastify inject() for HTTP testing without starting server
 - Test isolation maintained (each test suite has own server instance)
+- Query string testing for GET /fee endpoint
 
 ## Development Workflow
 
@@ -170,15 +213,11 @@ let feeConfig: FeeConfig | undefined;
 
 ## Future Considerations
 
-### Immediate Next Steps
-- Implement fee calculation logic using stored config
-- Add endpoint to retrieve current config
-- Add endpoint to calculate fees based on amount and type
-
 ### Scalability
 - Move config storage to Redis or database
-- Add caching layer for fee calculations
+- Add caching layer for fee calculations (though binary search is already very fast)
 - Consider horizontal scaling with load balancer
+- Add config version management for rolling updates
 
 ### Observability
 - Structured logging with pino (already included via Fastify)
@@ -200,10 +239,30 @@ let feeConfig: FeeConfig | undefined;
 
 ## Key Files to Know
 
-- `src/server.ts` - Server setup, plugin registration, route definitions
-- `src/controllers/fee.controller.ts` - POST /fee endpoint implementation
+- `src/server.ts` - Server setup, plugin registration, route definitions (GET /health, POST /fee, GET /fee)
+- `src/controllers/fee.controller.ts` - POST /fee (CSV upload) and GET /fee (fee calculation) endpoints
 - `src/services/csv-parser.ts` - CSV validation and parsing logic
-- `src/services/config-store.ts` - In-memory storage implementation
-- `src/types/fee.types.ts` - Core type definitions
+- `src/services/fee-lookup.ts` - Index building and binary search implementation
+- `src/services/config-store.ts` - In-memory FeeIndex storage
+- `src/utils/fee-calculator.ts` - Pure fee calculation function
+- `src/types/fee.types.ts` - Core type definitions (FeeRule, FeeConfig, FeeIndex, request/response types)
 - `jest.config.js` - Test configuration
 - `tsconfig.json` - TypeScript compiler configuration
+
+## API Flow
+
+### Upload Flow (POST /fee)
+1. Client uploads CSV file
+2. Controller receives multipart file
+3. CSV parser validates and parses to FeeConfig
+4. Fee lookup service builds FeeIndex (groups by type, sorts by range)
+5. Config store saves FeeIndex to memory
+6. Returns success message
+
+### Calculation Flow (GET /fee)
+1. Client sends query params (?total=1000&type=clearing)
+2. Controller validates params (required, non-negative total)
+3. Config store retrieves FeeIndex
+4. Fee lookup service performs binary search for matching rule
+5. Fee calculator computes fee amount (total × percentage)
+6. Returns response with total + fee, type, percentage, and fee amount
